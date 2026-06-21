@@ -106,19 +106,3 @@ def health_check():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=False, host="0.0.0.0", port=port)
-
-    history.append({"role": "assistant", "content": reply_text})
-    conversations[sender] = history
-
-    twiml = MessagingResponse()
-    twiml.message(reply_text)
-    return str(twiml)
-
-
-@app.route("/", methods=["GET"])
-def health_check():
-    return "Postharvest bot is running."
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(debug=False, host="0.0.0.0", port=port)
