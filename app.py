@@ -1,29 +1,22 @@
 """
 Postharvest Extension WhatsApp Bot - Trial Version (Text Only)
-Connects Twilio WhatsApp Sandbox <-> Claude API
+Connects Twilio WhatsApp Sandbox <-> Google Gemini API (free tier)
 
 SETUP:
-1. pip install flask anthropic twilio --break-system-packages
-2. Set environment variables:
-   - ANTHROPIC_API_KEY
-   - (Twilio credentials are NOT needed for receiving/replying via TwiML,
-     only if you want to send proactive messages later)
-3. Run: python app.py
-4. Expose it publicly (for trial: use ngrok -> ngrok http 5000)
-5. In Twilio Console > WhatsApp Sandbox Settings, set the
-   "WHEN A MESSAGE COMES IN" webhook to: https://<your-ngrok-url>/whatsapp
-6. Join the sandbox from your WhatsApp by sending the join code Twilio gives you
-   to the Twilio sandbox number.
+1. requirements.txt should contain: flask, google-generativeai, twilio
+2. Set environment variable on Render:
+   - GEMINI_API_KEY  (get this free from https://aistudio.google.com/app/apikey)
+3. Start Command on Render: python app.py
 """
 
 import os
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
-import anthropic
+import google.generativeai as genai
 
 app = Flask(__name__)
 
-client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 SYSTEM_PROMPT = """You are Mukulima AI, a friendly agricultural extension assistant \
 specializing in postharvest handling for small-scale farmers in Uganda.
@@ -66,6 +59,11 @@ Use a tone that builds trust.
 be easily translated or understood by someone with basic English.
 """
 
+model = genai.GenerativeModel(
+    model_name="gemini-2.5-flash",
+    system_instruction=SYSTEM_PROMPT,
+)
+
 # Simple in-memory conversation history (per WhatsApp number)
 # NOTE: this resets if the server restarts. Fine for a solo trial.
 conversations = {}
@@ -82,26 +80,32 @@ def whatsapp_reply():
         conversations[sender] = []
 
     history = conversations[sender]
-    history.append({"role": "user", "content": incoming_msg})
-
-    # Trim history to avoid unbounded growth
-    trimmed_history = history[-(MAX_HISTORY_TURNS * 2):]
 
     try:
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=400,
-            system=SYSTEM_PROMPT,
-            messages=trimmed_history,
-        )
-        reply_text = "".join(
-            block.text for block in response.content if block.type == "text"
-        ).strip()
+        chat = model.start_chat(history=history)
+        response = chat.send_message(incoming_msg)
+        reply_text = response.text.strip()
+        # Save updated history (Gemini's chat object tracks it in its own format)
+        conversations[sender] = chat.history[-(MAX_HISTORY_TURNS * 2):]
     except Exception as e:
         reply_text = (
             "Sorry, I had a problem answering that. Please try again in a moment."
         )
-        print(f"Error calling Claude API: {e}")
+        print(f"Error calling Gemini API: {e}")
+
+    twiml = MessagingResponse()
+    twiml.message(reply_text)
+    return str(twiml)
+
+
+@app.route("/", methods=["GET"])
+def health_check():
+    return "Postharvest bot is running."
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=False, host="0.0.0.0", port=port)
 
     history.append({"role": "assistant", "content": reply_text})
     conversations[sender] = history
