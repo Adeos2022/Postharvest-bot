@@ -75,6 +75,13 @@ MAX_HISTORY_TURNS = 10  # keep last N user/assistant exchanges per user
 def whatsapp_reply():
     incoming_msg = request.values.get("Body", "").strip()
     sender = request.values.get("From", "unknown")
+if not incoming_msg:
+    twiml = MessagingResponse()
+    twiml.message(
+        "Sorry, I can only understand text messages right now. "
+        "Please type your question in words."
+    )
+    return str(twiml)
 
     if sender not in conversations:
         conversations[sender] = []
