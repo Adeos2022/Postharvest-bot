@@ -13,6 +13,8 @@ import os
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 import google.generativeai as genai
+from kb import KB
+kb = KB()
 
 app = Flask(__name__)
 
@@ -90,7 +92,17 @@ def whatsapp_reply():
 
     try:
         chat = model.start_chat(history=history)
-        response = chat.send_message(incoming_msg)
+        hits = kb.search(incoming_msg)
+        notes = "\n\n".join(t for n, t in hits) or "No matching notes."
+        prompt = (
+            "Use the reference notes below when they cover the question. "
+            "If they do not cover it, say you are not sure and suggest "
+            "asking a local agricultural extension officer. "
+            "Do not invent figures.\n\n"
+            "NOTES:\n" + notes + "\n\n"
+            "FARMER QUESTION: " + incoming_msg
+        )
+        response = chat.send_message(prompt)
         reply_text = response.text.strip()
         # Save updated history (Gemini's chat object tracks it in its own format)
         conversations[sender] = chat.history[-(MAX_HISTORY_TURNS * 2):]
